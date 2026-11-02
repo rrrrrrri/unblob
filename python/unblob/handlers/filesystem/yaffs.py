@@ -305,6 +305,15 @@ class YAFFSParser:
             except EOFError:
                 break
 
+            if (
+                isinstance(data_chunk, YAFFS2Chunk)
+                and data_chunk.seq_number == 0xFFFFFFFF
+            ):
+                if page == b"\xff" * self.config.page_size:
+                    continue
+                self.file.seek(data_chunk.offset, io.SEEK_SET)
+                break
+
             # ignore chunks tagged as deleted
             if isinstance(data_chunk, YAFFS1Chunk) and data_chunk.page_status == 0x0:
                 continue
@@ -319,6 +328,7 @@ class YAFFSParser:
                     break
 
                 if not is_valid_header(header):
+                    self.file.seek(data_chunk.offset, io.SEEK_SET)
                     break
 
                 if store:
@@ -332,10 +342,12 @@ class YAFFSParser:
 
     def auto_detect(self) -> YAFFSConfig:
         """Auto-detect page_size, spare_size, and ECC using known signatures."""
+        start_offset = self.file.tell()
         page_size = 0
         config = None
         for page_size in VALID_PAGE_SIZES:
-            spare_start = self.file[page_size : page_size + SPARE_START_LEN]
+            spare_offset = start_offset + page_size
+            spare_start = self.file[spare_offset : spare_offset + SPARE_START_LEN]
             if spare_start.startswith(SPARE_START_LITTLE_ENDIAN_ECC):
                 config = YAFFSConfig(
                     endianness=Endian.LITTLE,
@@ -394,7 +406,7 @@ class YAFFSParser:
         # does not meet this requirement.
 
         object_id_offset = 4
-        object_id_start = page_size + ecc_offset + object_id_offset
+        object_id_start = start_offset + page_size + ecc_offset + object_id_offset
         object_id_end = object_id_start + 4
         spare_signature = self.file[object_id_start:object_id_end] + b"\xff\xff"
 
@@ -674,7 +686,8 @@ class YAFFS1Parser(YAFFSParser):
 
 def is_yaffs_v1(file: File, start_offset: int) -> bool:
     file.seek(start_offset, io.SEEK_SET)
-    if file[0:4] == b"\x03\x00\x00\x00" or file[0:4] == b"\x01\x00\x00\x00":
+    magic = file[start_offset : start_offset + 4]
+    if magic in (b"\x03\x00\x00\x00", b"\x01\x00\x00\x00"):
         endian = Endian.LITTLE
     else:
         endian = Endian.BIG
@@ -766,5 +779,5 @@ class YAFFSHandler(Handler):
         parser.parse()
         # skip 0xFF padding
         file.seek(parser.end_offset, io.SEEK_SET)
-        read_until_past(file, b"\xff")
-        return ValidChunk(start_offset=start_offset, end_offset=file.tell())
+        end_offset = read_until_past(file, b"\xff")
+        return ValidChunk(start_offset=start_offset, end_offset=end_offset)
