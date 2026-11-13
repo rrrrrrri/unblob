@@ -25,6 +25,7 @@
     | [`D-LINK FPKG`](#d-link-fpkg) | ARCHIVE | :octicons-check-16: |
     | [`D-LINK SHRS`](#d-link-shrs) | ARCHIVE | :octicons-check-16: |
     | [`DMG`](#dmg) | ARCHIVE | :octicons-check-16: |
+    | [`DRAYTEK VIGOR 3910 ENCRYPTED FIRMWARE`](#draytek-vigor-3910-encrypted-firmware) | ARCHIVE | :octicons-alert-fill-12: |
     | [`ELF (32-BIT)`](#elf-32-bit) | EXECUTABLE | :octicons-check-16: |
     | [`ELF (64-BIT)`](#elf-64-bit) | EXECUTABLE | :octicons-check-16: |
     | [`ENGENIUS`](#engenius) | ARCHIVE | :octicons-alert-fill-12: |
@@ -35,6 +36,8 @@
     | [`GZIP (MULTI-VOLUME)`](#gzip-multi-volume) | COMPRESSION | :octicons-check-16: |
     | [`HP BDL`](#hp-bdl) | ARCHIVE | :octicons-check-16: |
     | [`HP IPKG`](#hp-ipkg) | ARCHIVE | :octicons-check-16: |
+    | [`IKUAI IKMF ROOTFS`](#ikuai-ikmf-rootfs) | ARCHIVE | :octicons-alert-fill-12: |
+    | [`IKUAI V3 ROOTFS`](#ikuai-v3-rootfs) | ARCHIVE | :octicons-alert-fill-12: |
     | [`INSTAR BNEG`](#instar-bneg) | ARCHIVE | :octicons-check-16: |
     | [`INSTAR HD`](#instar-hd) | ARCHIVE | :octicons-check-16: |
     | [`ISO 9660`](#iso-9660) | FILESYSTEM | :octicons-check-16: |
@@ -503,6 +506,29 @@
     === "References"
 
         - [Apple Disk Image Format Documentation](http://newosxbook.com/DMG.html){ target="_blank" }
+## DrayTek Vigor 3910 encrypted firmware
+
+!!! warning "Partially supported"
+
+    === "Description"
+
+        Encrypted firmware containers used by DrayTek Vigor 3910 systems. The handler decrypts every encrypted entry and emits the results for recursive extraction.
+
+        ---
+
+        - **Handler type:** Archive
+        - **Vendor:** DrayTek
+
+    === "References"
+
+        - [DrayTek Vigor 3910 firmware analysis](https://wzt.ac.cn/2024/02/19/vigor_3910/){ target="_blank" }
+        - [RFC 8439: ChaCha20 and Poly1305 for IETF Protocols](https://www.rfc-editor.org/rfc/rfc8439){ target="_blank" }
+        - [Booting AArch64 Linux](https://www.kernel.org/doc/html/v6.12/arch/arm64/booting.html){ target="_blank" }
+
+    === "Limitations"
+
+        - Only Vigor 3910 containers using a 12-byte nonce and the known fixed key are supported.
+        - The proprietary entry checksums are not verified.
 ## ELF (32-bit)
 
 !!! success "Fully supported"
@@ -673,6 +699,48 @@
     === "References"
 
         - [hpbdl](https://github.com/tylerwhall/hpbdl){ target="_blank" }
+## iKuai IKMF rootfs
+
+!!! warning "Partially supported"
+
+    === "Description"
+
+        Encrypted rootfs images used by iKuai 4.0.306 and later x64 systems. The handler derives the IKMF v3 payload key and emits the decrypted XZ stream for recursive extraction.
+
+        ---
+
+        - **Handler type:** Archive
+        - **Vendor:** iKuai
+
+    === "References"
+
+        - [iKuai 4.0.306+ x64 rootfs (IKMF)](https://github.com/iKuaiPatch/rootfs/blob/6fe50a5f7ad1810b08ce6f3fe295dd55e49a304f/tools/ikmf.md){ target="_blank" }
+
+    === "Limitations"
+
+        - Only version 3 of the x64 IKMF format is supported.
+## iKuai V3 rootfs
+
+!!! warning "Partially supported"
+
+    === "Description"
+
+        RSA-signed V3 rootfs bundles used by iKuai systems. The handler verifies the official signature, decrypts the XZ rootfs, and preserves the trailing gzip member for recursive extraction.
+
+        ---
+
+        - **Handler type:** Archive
+        - **Vendor:** iKuai
+
+    === "References"
+
+        - [iKuai rootfs V3 codec](https://github.com/iKuaiPatch/rootfs/blob/6fe50a5f7ad1810b08ce6f3fe295dd55e49a304f/tools/rootfs_tools/src/codecs/V3Codec.cpp){ target="_blank" }
+        - [iKuai V3 firmware public key](https://github.com/iKuaiPatch/rootfs/blob/6fe50a5f7ad1810b08ce6f3fe295dd55e49a304f/key/firmware_v3_public_key.pem){ target="_blank" }
+
+    === "Limitations"
+
+        - The bundle must start at offset zero, use the official RSA key, and contain a trailing Linux gzip stream.
+        - V1, V2, and V3 images signed with custom keys are not supported.
 ## Instar BNEG
 
 !!! success "Fully supported"

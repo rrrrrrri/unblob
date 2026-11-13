@@ -1,4 +1,5 @@
 import gzip
+import io
 from pathlib import Path
 
 import pytest
@@ -140,3 +141,33 @@ def test_calculate_chunk_stops_before_member_with_bad_trailer():
 
     assert chunk is not None
     assert chunk.end_offset == len(member_a)
+
+
+@pytest.mark.parametrize("member_count", [1, 2])
+def test_calculate_chunk_stops_at_enclosing_boundary(member_count: int):
+    prefix = b"container header"
+    members = gzip.compress(b"durian") * member_count
+    outside_member = gzip.compress(b"jackfruit")
+    max_end_offset = len(prefix) + len(members)
+
+    with File.from_bytes(prefix + members + outside_member) as file:
+        file.seek(len(prefix), io.SEEK_SET)
+        chunk = GZIPHandler().calculate_chunk(
+            file, len(prefix), max_end_offset=max_end_offset
+        )
+
+        assert chunk is not None
+        assert (chunk.start_offset, chunk.end_offset) == (len(prefix), max_end_offset)
+        assert file.tell() == max_end_offset
+
+
+@pytest.mark.parametrize("preceding_members", [0, 1])
+def test_calculate_chunk_rejects_member_crossing_boundary(preceding_members: int):
+    members = gzip.compress(b"durian") * preceding_members
+    members += gzip.compress(b"jackfruit")
+
+    with (
+        File.from_bytes(members) as file,
+        pytest.raises(InvalidInputFormat, match="enclosing boundary"),
+    ):
+        GZIPHandler().calculate_chunk(file, 0, max_end_offset=len(members) - 1)

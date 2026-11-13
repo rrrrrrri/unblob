@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from unblob import handlers
+from unblob.handlers.archive.ikuai.rootfs import IkuaiV3RootfsHandler
 from unblob.models import Handler
 from unblob.processing import ExtractionConfig, process_file
 from unblob.sandbox import AccessFS, Sandbox
@@ -55,6 +56,18 @@ def test_all_handlers(
     request: pytest.FixtureRequest,
 ):
     handler_name = input_dir.parent.name
+    if handler_name == IkuaiV3RootfsHandler.NAME:
+        public_key = input_dir.parent.joinpath("test_public_key.pem").read_bytes()
+
+        class TestIkuaiV3RootfsHandler(IkuaiV3RootfsHandler):
+            PUBLIC_KEY_PEM = public_key
+
+        extraction_config.handlers = tuple(
+            TestIkuaiV3RootfsHandler if handler is IkuaiV3RootfsHandler else handler
+            for handler in extraction_config.handlers
+        )
+        extraction_config.process_num = 1
+
     if (sys.platform, handler_name) == ("darwin", "partclone"):
         pytest.skip(
             f"Handler '{handler_name}' not supported on platform '{sys.platform}'"

@@ -21,8 +21,10 @@ from .archive import (
 )
 from .archive.autel import ecc
 from .archive.dlink import alpha_encimg, deafbead, encrpted_img, fpkg, shrs
+from .archive.draytek import vigor3910
 from .archive.engeniustech import engenius
 from .archive.hp import bdl, ipkg
+from .archive.ikuai import rootfs as ikuai_rootfs
 from .archive.instar import bneg, instar_hd
 from .archive.moxa import frm
 from .archive.netgear import chk, trx
@@ -113,6 +115,9 @@ BUILTIN_HANDLERS: Handlers = (
     hdr.HDR2Handler,
     qnap_nas.QnapHandler,
     qnap_networking.QnapNetworkingHandler,
+    ikuai_rootfs.IkuaiIkmfRootfsHandler,
+    ikuai_rootfs.IkuaiV3RootfsHandler,
+    vigor3910.DraytekVigor3910Handler,
     bneg.BNEGHandler,
     bdl.HPBDLHandler,
     instar_hd.InstarHDHandler,

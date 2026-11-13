@@ -1,10 +1,17 @@
+import gzip
+from pathlib import Path
+from types import SimpleNamespace
+
+import lief
 import pytest
 
 from unblob.file_utils import File
 from unblob.handlers.executable.elf import (
+    KERNEL_INIT_DATA_SECTION,
     QNX_IFS_MARKER,
     QNX_IFS_MARKER_OFFSET,
     ELF64Handler,
+    extract_initramfs,
 )
 from unblob.models import ValidChunk
 from unblob.testing import unhex
@@ -103,6 +110,43 @@ def test_qnx_ifs_elf_is_ignored():
     assert chunk is None
 
 
+def make_kernel_elf(init_data_offset: int, init_data_size: int):
+    section = SimpleNamespace(file_offset=init_data_offset, size=init_data_size)
+    return SimpleNamespace(
+        header=SimpleNamespace(
+            identity_class=lief.ELF.Header.CLASS.ELF64,
+            identity_data=lief.ELF.Header.ELF_DATA.MSB,
+        ),
+        has_section=lambda name: name == KERNEL_INIT_DATA_SECTION,
+        get_section=lambda _name: section,
+    )
+
+
+def test_extracts_gzip_at_end_of_init_data(tmp_path: Path):
+    prefix = b"vendor init data\x00" * 4
+    compressed = gzip.compress(b"070701minimal initramfs", mtime=0)
+    init_data_offset = 128
+    content = b"\x00" * init_data_offset + prefix + compressed
+    elf = make_kernel_elf(init_data_offset, len(prefix) + len(compressed))
+
+    with File.from_bytes(content) as file:
+        extract_initramfs(elf, file, tmp_path / "extract")
+
+    assert (tmp_path / "extract/initramfs").read_bytes() == compressed
+
+
+def test_ignores_invalid_gzip_at_end_of_init_data(tmp_path: Path):
+    invalid_gzip = b"\x1f\x8b\x08\x00" + b"\x00" * 20
+    init_data_offset = 128
+    content = b"\x00" * init_data_offset + invalid_gzip
+    elf = make_kernel_elf(init_data_offset, len(invalid_gzip))
+
+    with File.from_bytes(content) as file:
+        extract_initramfs(elf, file, tmp_path / "extract")
+
+    assert not (tmp_path / "extract/initramfs").exists()
+
+
 @pytest.mark.parametrize(
     "offset, byte",
     [
@@ -117,3 +161,36 @@ def test_invalid_header(offset, byte):
     chunk = ELF64Handler().calculate_chunk(file, 0)
 
     assert chunk is None
+
+
+@pytest.mark.parametrize("member_count", [1, 2])
+def test_gzip_fallback_excludes_member_after_init_data(
+    tmp_path: Path, member_count: int
+):
+    prefix = b"vendor init data\x00" * 4
+    compressed = gzip.compress(b"070701minimal initramfs", mtime=0) * member_count
+    outside_member = gzip.compress(b"outside section", mtime=0)
+    init_data_offset = 128
+    content = bytes(init_data_offset) + prefix + compressed + outside_member
+    elf = make_kernel_elf(init_data_offset, len(prefix) + len(compressed))
+
+    with File.from_bytes(content) as file:
+        extract_initramfs(elf, file, tmp_path / "extract")
+
+    assert (tmp_path / "extract/initramfs").read_bytes() == compressed
+
+
+@pytest.mark.parametrize("preceding_members", [0, 1])
+def test_gzip_fallback_rejects_member_crossing_section(
+    tmp_path: Path, preceding_members: int
+):
+    compressed = gzip.compress(b"070701minimal initramfs", mtime=0)
+    compressed *= preceding_members + 1
+    init_data_offset = 128
+    content = bytes(init_data_offset) + compressed
+    elf = make_kernel_elf(init_data_offset, len(compressed) - 1)
+
+    with File.from_bytes(content) as file:
+        extract_initramfs(elf, file, tmp_path / "extract")
+
+    assert not (tmp_path / "extract/initramfs").exists()

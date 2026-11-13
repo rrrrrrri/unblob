@@ -22,6 +22,7 @@ from unblob.file_utils import (
     read_until_past,
     round_up,
 )
+from unblob.handlers.compression.gzip import GZIPHandler
 from unblob.models import (
     HandlerDoc,
     HandlerType,
@@ -39,6 +40,7 @@ KERNEL_MODULE_SIGNATURE_INFO_LEN = 12
 KERNEL_MODULE_SIGNATURE_FOOTER = b"~Module signature appended~\n"
 
 KERNEL_INIT_DATA_SECTION = ".init.data"
+GZIP_MAGIC = b"\x1f\x8b\x08"
 
 QNX_IFS_MARKER = b"\xeb\x7e\xff\x00"
 QNX_IFS_MARKER_OFFSET = 0x3000
@@ -210,6 +212,7 @@ def extract_initramfs(elf, file: File, outdir):
         init_data.file_offset <= initramfs_start < initramfs_end <= init_data_end_offset
         and (bytes(padding) == file[initramfs_end:initramfs_size_offset])
     ):
+        _extract_gzip_initramfs(file, init_data, outdir)
         return
 
     # when bigger padding is also a possibility, include 4 more bytes from the beginning
@@ -223,6 +226,28 @@ def extract_initramfs(elf, file: File, outdir):
         file,
         ValidChunk(start_offset=initramfs_start, end_offset=initramfs_end),
     )
+
+
+def _extract_gzip_initramfs(file: File, init_data, outdir):
+    """Extract a gzip stream which occupies the end of ``.init.data``."""
+    init_data_end = init_data.file_offset + init_data.size
+    search_offset = init_data.file_offset
+    handler = GZIPHandler()
+
+    while (gzip_offset := file.find(GZIP_MAGIC, search_offset, init_data_end)) != -1:
+        file.seek(gzip_offset, io.SEEK_SET)
+        try:
+            chunk = handler.calculate_chunk(
+                file, gzip_offset, max_end_offset=init_data_end
+            )
+        except (EOFError, InvalidInputFormat):
+            chunk = None
+
+        if chunk is not None and chunk.end_offset == init_data_end:
+            carve_chunk_to_file(outdir / "initramfs", file, chunk)
+            return
+
+        search_offset = gzip_offset + 1
 
 
 class _ELFBase(StructHandler):

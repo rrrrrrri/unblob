@@ -11,3 +11,59 @@ build/
 /.venv
 unblob.log
 /.direnv
+
+# Local development containers and deployment caches
+/Dockerfile-dev
+/.docker-cache/
+/.buildx-cache/
+/.deploy-cache/
+/deployment-cache/
+/docker-data/
+/compose.override.yml
+/compose.override.yaml
+/docker-compose.override.yml
+/docker-compose.override.yaml
+
+# Local test output and tool state
+/.DS_Store
+/.pytest_cache/
+/.ruff_cache/
+/.mypy_cache/
+/.pyright/
+/.hypothesis/
+/.tox/
+/.nox/
+/htmlcov/
+/test-results/
+/coverage.xml
+/junit*.xml
+
+# Local credentials and private keys
+/.env
+/.env.*
+!/.env.example
+/.secrets/
+/secrets/
+/credentials/
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.secret
+*.token
+*_private_key.pem
+id_rsa*
+id_ed25519*
+credentials*.json
+service-account*.json
+
+# External or non-redistributable firmware samples. Synthetic integration
+# fixtures under tests/integration remain tracked through Git LFS.
+/firmware/
+/firmwares/
+/vigor/
+/ikuai/
+/test-firmware/
+/private-fixtures/
+/samples-private/

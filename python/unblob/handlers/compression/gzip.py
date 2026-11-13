@@ -182,12 +182,19 @@ class GZIPHandler(Handler):
 
         return file.tell()
 
-    def calculate_chunk(self, file: File, start_offset: int) -> ValidChunk | None:
+    def calculate_chunk(
+        self,
+        file: File,
+        start_offset: int,
+        *,
+        max_end_offset: int | None = None,
+    ) -> ValidChunk | None:
         end_offset = self._read_member_end_offset(file)
         if end_offset is None:
             return None
 
-        while end_offset < file.size():
+        member_limit = max_end_offset if max_end_offset is not None else file.size()
+        while end_offset < member_limit:
             try:
                 next_end_offset = self._read_member_end_offset(file)
             except (EOFError, gzip.BadGzipFile, InvalidInputFormat):
@@ -198,6 +205,9 @@ class GZIPHandler(Handler):
                 break
 
             end_offset = next_end_offset
+
+        if max_end_offset is not None and end_offset > max_end_offset:
+            raise InvalidInputFormat("gzip member extends past the enclosing boundary")
 
         return ValidChunk(
             start_offset=start_offset,
