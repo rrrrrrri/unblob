@@ -1,10 +1,9 @@
-import os
 from pathlib import Path
 
 import arpy
 from structlog import get_logger
 
-from ...file_utils import FileSystem, OffsetFile, iterate_file
+from ...file_utils import FileSystem, OffsetFile
 from ...models import (
     Extractor,
     ExtractResult,
@@ -21,10 +20,6 @@ from ...report import ExtractionProblem
 logger = get_logger()
 
 
-HEADER_LENGTH = 0x44
-SIGNATURE_LENGTH = 0x8
-
-
 class ArExtractor(Extractor):
     def extract(self, inpath: Path, outdir: Path) -> ExtractResult | None:
         fs = FileSystem(outdir)
@@ -34,11 +29,27 @@ class ArExtractor(Extractor):
 
             for name in sorted(archive.archived_files):
                 archived_file = archive.archived_files[name]
+                # arpy includes BSD extended-name padding in the dictionary key,
+                # but has already excluded the full name field from the payload.
+                filename = (
+                    name.rstrip(b"\0")
+                    if archived_file.header.type == arpy.HEADER_BSD
+                    else name
+                )
+                if not filename or b"\0" in filename:
+                    fs.record_problem(
+                        ExtractionProblem(
+                            path=repr(name),
+                            problem="Empty archive path or embedded NUL in filename",
+                            resolution="Skipped.",
+                        )
+                    )
+                    continue
 
                 try:
-                    path = Path(name.decode())
+                    path = Path(filename.decode())
                 except UnicodeDecodeError:
-                    path = Path(name.decode(errors="replace"))
+                    path = Path(filename.decode(errors="replace"))
                     fs.record_problem(
                         ExtractionProblem(
                             path=repr(name),
@@ -47,14 +58,16 @@ class ArExtractor(Extractor):
                         )
                     )
 
-                fs.write_chunks(
-                    path,
-                    chunks=iterate_file(
-                        archived_file,
-                        0,
-                        archived_file.header.size,
-                    ),
-                )
+                try:
+                    fs.carve(path, archived_file, 0, archived_file.header.size)  # pyright: ignore[reportArgumentType]
+                except FileExistsError:
+                    fs.record_problem(
+                        ExtractionProblem(
+                            path=repr(name),
+                            problem="Archive path conflicts with an existing entry",
+                            resolution="Skipped.",
+                        )
+                    )
 
         return ExtractResult(reports=fs.problems)
 
@@ -98,18 +111,14 @@ class ARHandler(Handler):
                 "Hit an ArchiveFormatError, we've probably hit some other kind of data",
                 exc_info=exc,
             )
-
-            # wind the cursor back the whole header length to check if we failed on
-            # the first match, which means malformed AR archive
-            ar.file.seek(-HEADER_LENGTH, os.SEEK_CUR)
-            # we check if we failed on the first match
-            if start_offset == file.tell():
+            # failing on the very first member header means this is not an AR archive
+            if not ar.headers:
                 return None
-            # otherwise we seek past the signature (failure on malformed AR archive
-            # within the whole file, not at the start)
-            ar.file.seek(SIGNATURE_LENGTH, os.SEEK_CUR)
 
+        # arpy tracks where the next member header would start, which is the end
+        # of the last member it parsed (padded to an even offset). Unlike the file
+        # position, it does not depend on how many bytes follow the archive.
         return ValidChunk(
             start_offset=start_offset,
-            end_offset=file.tell(),
+            end_offset=start_offset + ar.next_header_offset,
         )
